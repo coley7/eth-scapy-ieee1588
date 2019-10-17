@@ -6,6 +6,7 @@ from scapy.fields import *
 # enable to debug dissectors
 conf.debug_dissector = 1
 
+
 class SixBytesField(Field):
     def __init__(self, name, default):
         Field.__init__(self, name, default, '!Q')
@@ -15,6 +16,7 @@ class SixBytesField(Field):
 
     def getfield(self, pkt, s):
         return s[6:], self.m2i(pkt, struct.unpack(self.fmt, b'\x00\x00' + s[:6])[0])
+
 
 class TimestampField(Field):
     def __init__(self, name, default):
@@ -33,6 +35,7 @@ class TimestampField(Field):
     def i2repr(self, pkt, x):
         """Convert internal value to a nice representation"""
         return repr(self.i2h(pkt, x)) + ' secs'
+
 
 class ScaledNsField(Field):
     def __init__(self, name, default):
@@ -62,6 +65,7 @@ class ScaledNsField(Field):
         """Convert internal value to a nice representation"""
         return repr(self.i2h(pkt, x)) + ' ns'
 
+
 class _PTPPacketBase(Packet):
     """ base class to be used among all PTP Packet definitions."""
     # use this dictionary to set default values for desired fields (mostly on subclasses
@@ -89,6 +93,7 @@ class _PTPPacketBase(Packet):
         Packet.init_fields(self)
         self._set_defaults()
 
+
 class PortIdentity(_PTPPacketBase):
     fields_desc = [
         XLongField('clockIdentity', 0), # TODO: enhance to support EUI-64 input format
@@ -97,6 +102,18 @@ class PortIdentity(_PTPPacketBase):
 
     def extract_padding(self, p):
         return '', p
+
+
+class ClockQuality(_PTPPacketBase):
+    fields_desc = [
+        ByteField('clockClass', 0),
+        XByteField('clockAccuracy', 0),
+        ShortField('Variance', 0)
+    ]
+
+    def extract_padding(self, p):
+        return '', p
+
 
 class ieee1588(_PTPPacketBase):
     MSG_TYPE_SYNC = 0
@@ -147,7 +164,8 @@ class ieee1588(_PTPPacketBase):
                 return ieee1588v2_Signaling
             elif messageType == self.MSG_TYPE_MANAGEMENT:
                 return ieee1588v2_Management
-
+            elif messageType == self.MSG_TYPE_ANNOUNCE:
+                return ieee1588v2_Announce
         return ieee1588v2_Header
 
 
@@ -208,6 +226,7 @@ class ieee1588v2_TLV_Follow_Up(ieee1588v2_TLV_Header):
         SignedIntField('scaledLastGmFreqChange', 0),
     ]
 
+
 class ieee1588v2_Sync(ieee1588v2_Header):
     name = 'Precision Time Protocol Sync'
 
@@ -220,6 +239,7 @@ class ieee1588v2_Sync(ieee1588v2_Header):
         TimestampField('originTimestamp', 0),
     ]
 
+
 class ieee1588v2_Delay_Req(ieee1588v2_Header):
     name = 'Precision Time Protocol Sync'
 
@@ -231,6 +251,7 @@ class ieee1588v2_Delay_Req(ieee1588v2_Header):
         ieee1588v2_Header,
         TimestampField('originTimestamp', 0),
     ]
+
 
 class ieee1588v2_PDelay_Req(ieee1588v2_Header):
     name = 'Precision Time Protocol Peer Delay Request'
@@ -245,6 +266,7 @@ class ieee1588v2_PDelay_Req(ieee1588v2_Header):
         TimestampField('reserved ', 0),
     ]
 
+
 class ieee1588v2_PDelay_Resp(ieee1588v2_Header):
     name = 'Precision Time Protocol Peer Delay Response'
 
@@ -257,6 +279,7 @@ class ieee1588v2_PDelay_Resp(ieee1588v2_Header):
         TimestampField('requestReceiptTimestamp', 0),
         PacketField('requestingPortIdentity', PortIdentity(), PortIdentity),
     ]
+
 
 class ieee1588v2_Follow_Up(ieee1588v2_Header):
     name = 'Precision Time Protocol Follow Up'
@@ -271,6 +294,7 @@ class ieee1588v2_Follow_Up(ieee1588v2_Header):
         PacketLenField("TLV", None, ieee1588v2_TLV_Follow_Up, length_from = lambda pkt:pkt.messageLength - 44),
     ]
 
+
 class ieee1588v2_Delay_Resp(ieee1588v2_Header):
     name = 'Precision Time Protocol Delay Response'
 
@@ -283,6 +307,7 @@ class ieee1588v2_Delay_Resp(ieee1588v2_Header):
         TimestampField('receiveTimestamp', 0),
         PacketField('requestingPortIdentity', PortIdentity(), PortIdentity),
     ]
+
 
 class ieee1588v2_PDelay_Resp_Follow_Up(ieee1588v2_Header):
     name = 'Precision Time Protocol Peer Delay Response Follow Up'
@@ -297,6 +322,7 @@ class ieee1588v2_PDelay_Resp_Follow_Up(ieee1588v2_Header):
         PacketField('requestingPortIdentity', PortIdentity(), PortIdentity),
     ]
 
+
 class ieee1588v2_Signaling(ieee1588v2_Header):
     name = 'Precision Time Protocol Signaling'
 
@@ -310,13 +336,13 @@ class ieee1588v2_Signaling(ieee1588v2_Header):
         PacketListField("TLV", None, ieee1588v2_TLV_Follow_Up, length_from = lambda pkt:pkt.messageLength - 44),
     ]
 
+
 class ieee1588v2_Management(ieee1588v2_Header):
     name = 'Precision Time Protocol Management'
 
     # default values specification
     _defaults = {'messageType': ieee1588.MSG_TYPE_MANAGEMENT,
-                 'controlField': 4,
-                 }
+                 'controlField': 4}
 
     fields_desc = [
         ieee1588v2_Header,
@@ -328,6 +354,25 @@ class ieee1588v2_Management(ieee1588v2_Header):
         ByteField('reserved1', None),
         PacketListField("TLV", None, ieee1588v2_TLV_Follow_Up, length_from = lambda pkt:pkt.messageLength - 48),
     ]
+
+
+class ieee1588v2_Announce(ieee1588v2_Header):
+    name = 'Precision Time Protocol Announce'
+    
+    # default values specification
+    _defaults = {'messageType': ieee1588.MSG_TYPE_ANNOUNCE,
+                 'controlField': 5}
+    fields_desc = [
+        ieee1588v2_Header,
+        TimestampField('originTimestamp', 0),
+        ShortField('currentUtcOffset', 0),
+        ByteField('reserved', 0),
+        ByteField('priority1', 0),
+        PacketField('ClockQuality', ClockQuality(), ClockQuality),
+        ByteField('priority2', 0),
+        XLongField('grandmasterClockIdentity', 0),
+        XShortField('localStepsRemoved', 0),
+        XByteField('TimeSource', 0)]
 
 
 bind_layers(Ether, ieee1588, dst='01:80:c2:00:00:0e', type=0x88F7)
